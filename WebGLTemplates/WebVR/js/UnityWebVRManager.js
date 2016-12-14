@@ -7,10 +7,10 @@
   var eyeParamsL;
   var eyeParamsR;
   var fullscreen = new Fullscreen();
-  var isDeprecatedAPI = 'getVRDevices' in navigator;
-  var isSupported = 'getVRDisplays' in navigator || isDeprecatedAPI;
+  var isSupported = 'getVRDisplays' in navigator;
+  var frameReady = false;
+  var vrFrameData = window.VRFrameData ? new VRFrameData() : null;
   var vrDisplay;
-  var vrSensor;
   var vrPose;
 
   if (isSupported) {
@@ -65,7 +65,7 @@
   }
 
   function initVrLoaded () {
-    if (isDeprecatedAPI || vrDisplay.capabilities.canPresent) {
+    if (vrDisplay.capabilities.canPresent) {
       document.body.dataset.vrLoaded = 'true';
     }
   }
@@ -97,11 +97,7 @@
         resetPose();
       }
     });
-    if (isDeprecatedAPI) {
-      document.addEventListener(fullscreen.eventChange, modeChange);
-    } else {
-      window.addEventListener('vrdisplaypresentchange', modeChange);
-    }
+    window.addEventListener('vrdisplaypresentchange', modeChange);
     window.addEventListener('resize', resizeCanvas);
     window.addEventListener('beforeunload', exitPresent);
   }
@@ -155,36 +151,9 @@
   }
 
   function getDisplays () {
-    var filterDevices = function (devices) {
-      var device;
-      for (var i = 0; i < devices.length; i++) {
-        device = devices[i];
-        if (!vrDisplay && 'VRDisplay' in window && device instanceof window.VRDisplay) {
-          vrDisplay = vrSensor = device;
-          break;  // Use the first display we encounter.
-        } else if (!vrDisplay && 'HMDVRDevice' in window && device instanceof window.HMDVRDevice) {
-          vrDisplay = device;
-          if (vrSensor) {
-            break;
-          }
-        } else if (!vrSensor && 'PositionSensorVRDevice' in window && device instanceof window.PositionSensorVRDevice) {
-          vrSensor = device;
-          if (vrDisplay) {
-            break;
-          }
-        }
-      }
-
-      return vrDisplay;
-    };
-
     if (navigator.getVRDisplays) {
       isSupported = true;
-      return navigator.getVRDisplays().then(filterDevices);
-    } else if (navigator.getVRDevices) {
-      isSupported = true;
-      isDeprecatedAPI = true;
-      return navigator.getVRDevices().then(filterDevices);
+      return navigator.getVRDisplays().then((devices) => { vrDisplay = devices[0]; });
     } else {
       throw 'Your browser is not VR ready';
     }
@@ -195,24 +164,30 @@
       console.warn('[getEyeParameters] No VR device was detected');
       return;
     }
-    eyeParamsL = vrDisplay.getEyeParameters('left');
-    eyeParamsR = vrDisplay.getEyeParameters('right');
 
-    var eyeTranslationL = isDeprecatedAPI ? eyeParamsL.eyeTranslation.x : eyeParamsL.offset[0];
-    var eyeTranslationR = isDeprecatedAPI ? eyeParamsR.eyeTranslation.x : eyeParamsR.offset[0];
-    var eyeFOVL = isDeprecatedAPI ? eyeParamsL.recommendedFieldOfView : eyeParamsL.fieldOfView;
-    var eyeFOVR = isDeprecatedAPI ? eyeParamsR.recommendedFieldOfView : eyeParamsR.fieldOfView;
+    if (vrFrameData) {
+      SendMessage('WebVRCameraSet', 'eyeL_projectionMatrix', vrFrameData.leftProjectionMatrix.join(','));
+      SendMessage('WebVRCameraSet', 'eyeR_projectionMatrix', vrFrameData.rightProjectionMatrix.join(','));
+    } else {
+      eyeParamsL = vrDisplay.getEyeParameters('left');
+      eyeParamsR = vrDisplay.getEyeParameters('right');
 
-    SendMessage('WebVRCameraSet', 'eyeL_translation_x', eyeTranslationL);
-    SendMessage('WebVRCameraSet', 'eyeR_translation_x', eyeTranslationR);
-    SendMessage('WebVRCameraSet', 'eyeL_fovUpDegrees', eyeFOVL.upDegrees);
-    SendMessage('WebVRCameraSet', 'eyeL_fovDownDegrees', eyeFOVL.downDegrees);
-    SendMessage('WebVRCameraSet', 'eyeL_fovLeftDegrees', eyeFOVL.leftDegrees);
-    SendMessage('WebVRCameraSet', 'eyeL_fovRightDegrees', eyeFOVL.rightDegrees);
-    SendMessage('WebVRCameraSet', 'eyeR_fovUpDegrees', eyeFOVR.upDegrees);
-    SendMessage('WebVRCameraSet', 'eyeR_fovDownDegrees', eyeFOVR.downDegrees);
-    SendMessage('WebVRCameraSet', 'eyeR_fovLeftDegrees', eyeFOVR.leftDegrees);
-    SendMessage('WebVRCameraSet', 'eyeR_fovRightDegrees', eyeFOVR.rightDegrees);
+      var eyeTranslationL = eyeParamsL.offset[0];
+      var eyeTranslationR = eyeParamsR.offset[0];
+      var eyeFOVL = eyeParamsL.fieldOfView;
+      var eyeFOVR = eyeParamsR.fieldOfView;
+
+      SendMessage('WebVRCameraSet', 'eyeL_translation_x', eyeTranslationL);
+      SendMessage('WebVRCameraSet', 'eyeR_translation_x', eyeTranslationR);
+      SendMessage('WebVRCameraSet', 'eyeL_fovUpDegrees', eyeFOVL.upDegrees);
+      SendMessage('WebVRCameraSet', 'eyeL_fovDownDegrees', eyeFOVL.downDegrees);
+      SendMessage('WebVRCameraSet', 'eyeL_fovLeftDegrees', eyeFOVL.leftDegrees);
+      SendMessage('WebVRCameraSet', 'eyeL_fovRightDegrees', eyeFOVL.rightDegrees);
+      SendMessage('WebVRCameraSet', 'eyeR_fovUpDegrees', eyeFOVR.upDegrees);
+      SendMessage('WebVRCameraSet', 'eyeR_fovDownDegrees', eyeFOVR.downDegrees);
+      SendMessage('WebVRCameraSet', 'eyeR_fovLeftDegrees', eyeFOVR.leftDegrees);
+      SendMessage('WebVRCameraSet', 'eyeR_fovRightDegrees', eyeFOVR.rightDegrees);
+    }
   }
 
   function togglePresent () {
@@ -230,68 +205,59 @@
     if (!vrDisplay) {
       return;
     }
-    if (isDeprecatedAPI) {
-      return vrSensor.resetSensor();
-    } else {
-      return vrDisplay.resetPose();
-    }
+    return vrDisplay.resetPose();
   }
 
-  function getPose () {
+  function getFrameData () {
     if (!vrDisplay) {
       return;
     }
-    if (isDeprecatedAPI) {
-      return vrSensor.getState();
-    } else {
-      return vrDisplay.getPose();
+    vrDisplay.getFrameData(vrFrameData);
+    return vrFrameData;
+  }
+
+  function getPose () {
+    if (vrFrameData) {
+      vrFrameData.pose
+    }
+    else if (vrDisplay) {
+      vrDisplay.getPose()
     }
   }
 
   function requestPresent () {
-    if (isDeprecatedAPI) {
-      return fullscreen.enter(canvas, {vrDisplay: vrDisplay});
-    } else {
-      return vrDisplay.requestPresent([{source: canvas}]);
-    }
+    return vrDisplay.requestPresent([{source: canvas}]);
   }
 
   function exitPresent () {
     if (!isPresenting()) {
       return;
     }
-    if (isDeprecatedAPI) {
-      return fullscreen.exit();
-    } else {
-      return vrDisplay.exitPresent();
-    }
+    return vrDisplay.exitPresent();
   }
 
   function isPresenting () {
     if (!vrDisplay) {
       return false;
     }
-    if (isDeprecatedAPI) {
-      return fullscreen.isPresenting();
-    } else {
-      return vrDisplay.isPresenting;
-    }
+    return vrDisplay.isPresenting;
   }
 
   function getVRSensorState () {
+    getFrameData();
     vrPose = getPose();
     if (!vrPose || vrPose.orientation === null) {
       return;
     }
-    var quaternion = isDeprecatedAPI ? vrPose.orientation : new THREE.Quaternion().fromArray(vrPose.orientation);
+    var quaternion = new THREE.Quaternion().fromArray(vrPose.orientation);
     var euler = new THREE.Euler().setFromQuaternion(quaternion);
     SendMessage('WebVRCameraSet', 'euler_x', euler.x);
     SendMessage('WebVRCameraSet', 'euler_y', euler.y);
     SendMessage('WebVRCameraSet', 'euler_z', euler.z);
     if (vrPose.position !== null) {
-      var positionX = isDeprecatedAPI ? vrPose.position.x : vrPose.position[0];
-      var positionY = isDeprecatedAPI ? vrPose.position.y : vrPose.position[1];
-      var positionZ = isDeprecatedAPI ? vrPose.position.z : vrPose.position[2];
+      var positionX = vrPose.position[0];
+      var positionY = vrPose.position[1];
+      var positionZ = vrPose.position[2];
       SendMessage('WebVRCameraSet', 'position_x', positionX);
       SendMessage('WebVRCameraSet', 'position_y', positionY);
       SendMessage('WebVRCameraSet', 'position_z', positionZ);
@@ -300,8 +266,17 @@
 
   function resizeCanvas () {
     if (isPresenting()) {
-      canvas.width = Math.max(eyeParamsL.renderWidth, eyeParamsR.renderWidth) * 2;
-      canvas.height = Math.max(eyeParamsL.renderHeight, eyeParamsR.renderHeight);
+      // TODO: Find a way to get this in the 1.1 API
+      if (vrFrameData && vrDisplay.displayName == 'Oculus Rift CV1, Oculus VR') {
+        canvas.width = 1080 * 2;
+        canvas.height = 1200;
+      }
+      else {
+        eyeParamsL = vrDisplay.getEyeParameters('left');
+        eyeParamsR = vrDisplay.getEyeParameters('right');
+        canvas.width = Math.max(eyeParamsL.renderWidth, eyeParamsR.renderWidth) * 2;
+        canvas.height = Math.max(eyeParamsL.renderHeight, eyeParamsR.renderHeight);
+      }
       // TODO: Figure out how to properly mirror the canvas stereoscopically with the v1.0 API in Chromium:
       // https://github.com/gtk2k/Unity-WebVR-Sample-Assets/pull/15
       // See https://github.com/toji/webvr-samples/blob/633a43e/04-simple-mirroring.html#L227-L231
@@ -330,8 +305,8 @@
 
   // Post-render callback from Unity.
   window.postRender = function () {
-    if (!isDeprecatedAPI && isPresenting()) {
-      vrDisplay.submitFrame(vrPose);
+    if (isPresenting()) {
+      frameReady = true;
     }
   };
 
@@ -347,6 +322,7 @@
     getDisplays().then(function () {
       initVrLoaded();
       initVrEventListeners();
+      getFrameData();
       getEyeParameters();
       resizeCanvas();
       window.requestAnimationFrame(update);
@@ -354,6 +330,10 @@
   };
 
   var update = function () {
+    if (isPresenting() && frameReady) {
+      vrDisplay.submitFrame();
+      frameReady = false;
+    }
     getVRSensorState();
     raf(update);
   };

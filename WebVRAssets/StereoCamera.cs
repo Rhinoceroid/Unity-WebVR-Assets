@@ -100,6 +100,20 @@ public class StereoCamera : MonoBehaviour {
             cameraMain.farClipPlane);
     }
 
+	void eyeL_projectionMatrix(string matrix)
+	{
+		var parts = matrix.Split (',');
+		var m = new Matrix4x4 ();
+		for (var i = 0; i < 4; i++)
+		{
+			for (var j = 0; j < 4; j++)
+			{
+				m [i, j] = float.Parse (parts [j * 4 + i]);
+			}
+		}
+		cameraL.projectionMatrix = m;
+	}
+
     void eyeR_fovUpDegrees(float val)
     {
         eyeRFOVUpTan = (float)Math.Tan(val * DEG2RAD) * cameraMain.nearClipPlane;
@@ -134,6 +148,20 @@ public class StereoCamera : MonoBehaviour {
             Application.ExternalEval("console.log('" + ex.StackTrace + "')");
         }
     }
+
+	void eyeR_projectionMatrix(string matrix)
+	{
+		var parts = matrix.Split (',');
+		var m = new Matrix4x4 ();
+		for (var i = 0; i < 4; i++)
+		{
+			for (var j = 0; j < 4; j++)
+			{
+				m [j, i] = float.Parse (parts [i * 4 + j]);
+			}
+		}
+		cameraR.projectionMatrix = m;
+	}
 
     void euler_x(float val)
     {
