@@ -218,10 +218,10 @@
 
   function getPose () {
     if (vrFrameData) {
-      vrFrameData.pose
+      return vrFrameData.pose
     }
     else if (vrDisplay) {
-      vrDisplay.getPose()
+      return vrDisplay.getPose()
     }
   }
 
